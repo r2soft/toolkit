@@ -1,0 +1,43 @@
+{
+    "name": "r2soft/toolkit",
+    "description": "Toolkit utilitário em PHP puro (ex.: URL→PDF via Chrome headless, helpers diversos).",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "R2soft\\Toolkit\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.0",
+        "ext-curl": "*"
+    },
+    "config": {
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "keywords": [
+        "r2soft",
+        "toolkit",
+        "pdf",
+        "html-to-pdf",
+        "chrome",
+        "headless"
+    ],
+    "authors": [
+        {
+            "name": "Ricardo de Paula Coelho",
+            "email": "ricardo@r2soft.com.br"
+        },
+        {
+            "name": "R2 Soft - Informática e Softwares Ltda-ME",
+            "email": "r2soft@r2soft.com.br"
+        },
+        {
+            "name": "Divino Antonio de Lima",
+            "email": "divino@r2soft.com.br"
+        }
+    ],
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

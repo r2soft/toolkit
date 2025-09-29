@@ -10,7 +10,10 @@
     },
     "require": {
         "php": ">=7.4",
-        "ext-curl": "*",
+        "ext-curl": "*"
+    },
+    "require-dev": {
+        "ext-json": "*",
         "r2soft/utils": "^0.0.6"
     },
     "config": {
@@ -40,8 +43,5 @@
         }
     ],
     "minimum-stability": "stable",
-    "prefer-stable": true,
-    "require-dev": {
-        "ext-json": "*"
-    }
+    "prefer-stable": true
 }

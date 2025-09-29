@@ -398,7 +398,7 @@ class UrlToPdf
         return $f;
     }
 
-    public static function make(?string $url, bool $returnBase64 = false, array $options = []): UrlToPdfResult
+    public static function make(?string $url, bool $returnBase64 = true, array $options = []): UrlToPdfResult
     {
         $self = new self($options);
         return $self->convert($url, $returnBase64);

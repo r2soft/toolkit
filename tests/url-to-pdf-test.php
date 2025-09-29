@@ -20,11 +20,13 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use R2Soft\Toolkit\UrlToPdf;
 
-$url = $argv[1] ?? 'https://app.r2atendemais.com.br';
+$url = $argv[1] ?? 'https://example.com';
 
 $chrome = getenv('CHROME_BIN') ?: '/usr/bin/google-chrome';
 
-$res = UrlToPdf::make($url, false, [
+$asBase64 = false;
+
+$res = UrlToPdf::make($url, $asBase64, [
     'chrome' => $chrome,
     'timeout' => 60,
     'chrome_scale' => 1.0,

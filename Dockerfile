@@ -1,5 +1,5 @@
 # Dockerfile
-FROM r2soft/php8.1
+FROM r2soft/php7.4
 
 WORKDIR /app
 

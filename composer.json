@@ -9,9 +9,8 @@
         }
     },
     "require": {
-        "php": ">=8.0",
-        "ext-curl": "*",
-        "r2soft/utils": "^1.0"
+        "php": ">=7.4",
+        "ext-curl": "*"
     },
     "config": {
         "preferred-install": "dist",

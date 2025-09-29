@@ -343,7 +343,10 @@ class UrlToPdf
         $final = '';
         foreach ($cmd as $i => $part) {
             if ($i === 0) $final .= escapeshellcmd($part);
-            else $final .= (str_starts_with($part, '--')) ? ' ' . $part : ' ' . escapeshellarg($part);
+            else {
+                $isFlag = (substr($part, 0, 2) === '--');
+                $final .= $isFlag ? ' '.$part : ' '.escapeshellarg($part);
+            }
         }
         $procEnv = array_merge($_ENV, $_SERVER, $env);
         $des = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];

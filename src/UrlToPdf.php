@@ -75,7 +75,7 @@ class UrlToPdf
         $chr = $this->renderWithChrome($url);
         if ($chr['ok']) {
             $pdf = $chr['body'];
-            if ($returnBase64) $pdf = base64_encode($pdf);
+            if ($returnBase64) $pdf = 'data:application/pdf;base64,' . base64_encode($pdf);
             return UrlToPdfResult::ok($pdf, ['source' => 'chrome']);
         }
 

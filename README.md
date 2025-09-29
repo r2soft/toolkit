@@ -1,93 +1,218 @@
-# toolkit
+# R2Soft Toolkit (PHP)
+
+Biblioteca utilitária em PHP para gerar PDFs a partir de URLs usando Google Chrome/Chromium em modo headless e para mesclar múltiplos PDFs usando Ghostscript. Foco em simplicidade: sem exceptions; sempre retorna um objeto de resultado com sucesso/erro e metadados.
+
+Principais recursos:
+- URL → PDF com fallback: tenta baixar PDF nativo (Content-Type: application/pdf) e, se não for, renderiza a página com Chrome headless.
+- Mescla de PDFs: junta vários PDFs em um único arquivo usando Ghostscript (ou pdfunite opcionalmente).
+- API simples via classes R2Soft\Toolkit\UrlToPdf e R2Soft\Toolkit\PdfMerge.
+- Scripts de teste/uso prático em tests/.
 
 
+## Requisitos
 
-## Getting started
+Ambiente mínimo:
+- PHP 7.4+ com extensão cURL
+- Sistema operacional Linux (recomendado) ou compatível
+- Google Chrome ou Chromium instalados (para gerar PDF a partir de HTML/URL)
+- Ghostscript (gs) instalado (para mesclar PDFs)
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+Opcional:
+- pdfunite (pacote poppler-utils) caso prefira usar esse engine de mescla em vez de Ghostscript
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+Pacotes em Debian/Ubuntu (exemplo):
+- Chrome: via repositório oficial do Google (veja Dockerfile para referência) ou instale chromium.
+- Ghostscript: apt-get install -y ghostscript
+- pdfunite (opcional): apt-get install -y poppler-utils
 
-## Add your files
+Observação: O Dockerfile incluído já prepara um ambiente com Chrome e Ghostscript prontos para uso.
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
 
+## Instalação
+
+Via Composer (em um projeto seu):
+1. composer require r2soft/toolkit
+2. Inclua o autoload do Composer: require 'vendor/autoload.php';
+
+Neste repositório (local):
+- composer install
+
+
+## Como funciona (visão geral)
+
+- UrlToPdf::make($url, $returnBase64, $options) → gera um PDF a partir da URL informada.
+  - Primeiro tenta baixar diretamente um PDF (Content-Type application/pdf) respeitando headers/cookies opcionais.
+  - Se não for PDF, chama o Google Chrome/Chromium em modo headless para imprimir a página em PDF.
+  - Retorna UrlToPdfResult com:
+    - success: bool
+    - pdf: string (binário) ou base64, conforme parâmetro $returnBase64
+    - error: string (mensagem de erro, quando falha)
+    - meta: array (metadados como source: direct|chrome, status HTTP etc.)
+
+- PdfMerge::fromUrls($urls, $returnBase64, $options) → gera PDFs individuais a partir de cada URL e depois mescla em um único PDF usando Ghostscript (por padrão).
+  - Também retorna UrlToPdfResult com o PDF final (binário ou base64) e metadados.
+
+
+## Uso rápido (PHP)
+
+Gerar PDF de uma URL:
+
+```php
+use R2Soft\Toolkit\UrlToPdf;
+
+$res = UrlToPdf::make('https://example.com', false, [
+    'chrome'          => '/usr/bin/google-chrome', // opcional; também pode usar CHROME_BIN
+    'timeout'         => 60,                        // em segundos
+    'chrome_scale'    => 1.0,                       // fator de escala do Chrome (opcional)
+    'try_direct_pdf'  => true,                      // tenta Content-Type: application/pdf antes do Chrome
+    // 'headers'      => ['Accept-Language' => 'pt-BR,pt;q=0.9'],
+    // 'cookies'      => 'a=1; b=2',
+]);
+
+if ($res->success) {
+    file_put_contents('saida.pdf', $res->pdf); // binário
+} else {
+    error_log('Falha: ' . $res->error);
+}
 ```
-cd existing_repo
-git remote add origin https://gitlab.r2soft.app/community/toolkit.git
-git branch -M main
-git push -uf origin main
+
+Mesclar PDFs a partir de várias URLs:
+
+```php
+use R2Soft\Toolkit\UrlToPdf;
+
+$urls = [
+  'https://example.com',
+  'https://iana.org',
+];
+
+$res = UrlToPdf::mergeUrls($urls, false, [
+    'chrome'         => '/usr/bin/google-chrome',
+    'timeout'        => 60,
+    'try_direct_pdf' => true,
+]);
+
+if ($res->success) {
+    file_put_contents('mesclado.pdf', $res->pdf); // binário do PDF final
+} else {
+    error_log('Falha: ' . $res->error);
+}
 ```
 
-## Integrate with your tools
 
-- [ ] [Set up project integrations](https://gitlab.r2soft.app/community/toolkit/-/settings/integrations)
+## Opções suportadas (chaves do array $options)
 
-## Collaborate with your team
+- chrome: string|null
+  - Caminho para o binário do Chrome/Chromium. Se não informar, a biblioteca tenta achar automaticamente.
+  - Também é possível definir via variável de ambiente CHROME_BIN.
+- timeout: int (padrão: 60)
+  - Tempo máximo, em segundos, para cada operação (HTTP/Chrome).
+- chrome_scale: float|null
+  - Fator de escala do Chrome (ex.: 1.25). Opcional.
+- headers: array<string,string>
+  - Headers adicionais para a tentativa de PDF nativo (HTTP GET). O Accept padrão já privilegia PDF.
+- cookies: string|null
+  - Cabeçalho Cookie enviado no HTTP GET (ex.: "a=1; b=2").
+- try_direct_pdf: bool (padrão: true)
+  - Se true, tenta baixar PDF nativo antes de renderizar com Chrome.
+- cache_dir: string|null e cache_ttl: int
+  - Se definidos, habilita cache simples de PDFs por URL por cache_ttl segundos.
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
 
-## Test and Deploy
+## Dependências externas em destaque
 
-Use the built-in continuous integration in GitLab.
+- Google Chrome/Chromium: necessário para renderizar HTML→PDF quando a URL não retorna PDF nativo.
+  - Pode apontar o binário via options['chrome'] ou variável de ambiente CHROME_BIN.
+  - Em containers, normalmente em /usr/bin/google-chrome.
+- Ghostscript (gs): necessário para mesclar vários PDFs em um só.
+  - Usado por padrão em PdfMerge::mergeFiles e em UrlToPdf::mergeUrls (indiretamente).
+- pdfunite (opcional): engine alternativo de mescla. Para usá-lo diretamente, chame PdfMerge::mergeFiles($paths, 'pdfunite').
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
 
-***
+## Uso via scripts de teste (CLI)
 
-# Editing this README
+O repositório inclui scripts simples em tests/ para facilitar testes rápidos:
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+1) Gerar um único PDF de uma URL:
 
-## Suggestions for a good README
+```bash
+php tests/url-to-pdf-test.php "https://example.com"
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+- Saída padrão: tests/out.pdf
+- Define o Chrome com a variável de ambiente CHROME_BIN, se necessário:
 
-## Name
-Choose a self-explaining name for your project.
+```bash
+CHROME_BIN=/usr/bin/google-chrome php tests/url-to-pdf-test.php "https://example.com"
+```
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+2) Mesclar PDFs de várias URLs:
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+```bash
+php tests/merge-urls-test.php --engine=gs https://example.com https://iana.org
+```
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+- Engines aceitas: gs (padrão) ou pdfunite
+- Saída padrão: tests/out-merged.pdf
+- Opção --base64 retorna o PDF final em base64 (o script já salva em binário para facilitar)
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+## Execução com Docker
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+Você pode usar o docker-compose incluído, que já prepara um ambiente com Chrome e Ghostscript:
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+- Build e subir serviço:
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```bash
+docker compose up -d --build
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+- Instalar dependências do Composer (já é feito pelo command do compose) e executar os testes:
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+```bash
+docker compose exec app bash -lc "php -v && composer install && php tests/url-to-pdf-test.php https://example.com && php tests/merge-urls-test.php https://example.com https://iana.org"
+```
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+- Os arquivos gerados (tests/out.pdf e tests/out-merged.pdf) ficam mapeados no diretório local.
 
-## License
-For open source projects, say how it is licensed.
+Dicas para Chrome no Docker:
+- O projeto configura variáveis HOME/XDG_* para diretórios temporários e evita user-data-dir fixo para reduzir travas SingletonLock.
+- Flags usadas: --headless=new, --no-sandbox, --disable-dev-shm-usage, etc.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+
+## Solução de problemas (troubleshooting)
+
+- Chrome/Chromium não encontrado:
+  - Defina CHROME_BIN com o caminho do binário (ex.: /usr/bin/google-chrome).
+  - No Linux, verifique também google-chrome-stable, chromium ou chromium-browser.
+- Erro ao mesclar PDFs: "Ghostscript (gs) não encontrado":
+  - Instale: apt-get install -y ghostscript.
+  - Alternativa: use pdfunite (apt-get install -y poppler-utils) e chame o engine 'pdfunite'.
+- PDF muito pequeno ou inválido:
+  - Verifique se a página requer autenticação ou precisa de headers/cookies específicos.
+  - Ajuste 'timeout' e teste novamente.
+- Ambiente de container travando Chrome:
+  - Garanta que as libs listadas no Dockerfile estão presentes (libnss3, libgbm1, libx11, etc.).
+  - Use --no-sandbox e --disable-dev-shm-usage (o projeto já aplica).
+
+
+## Estrutura das classes principais
+
+- R2Soft\Toolkit\UrlToPdf
+  - make($url, $returnBase64 = true, array $options = []): UrlToPdfResult
+  - mergeUrls(array $urls, $returnBase64 = true, array $options = []): UrlToPdfResult (atalho para PdfMerge::fromUrls)
+
+- R2Soft\Toolkit\PdfMerge
+  - fromUrls(array $urls, $returnBase64 = true, array $options = []): UrlToPdfResult
+  - mergeFiles(array $pdfPaths, string $engine = 'gs'): UrlToPdfResult
+
+- R2Soft\Toolkit\UrlToPdfResult
+  - success: bool
+  - pdf: string|null (binário ou base64)
+  - error: string
+  - meta: array
+
+
+## Licença
+
+MIT License (c) 2025 R2 Soft

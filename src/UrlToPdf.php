@@ -34,13 +34,10 @@ class UrlToPdf
     {
         $this->chrome = isset($options['chrome']) ? (string)$options['chrome'] : null;
         $this->timeout = isset($options['timeout']) ? (int)$options['timeout'] : 60;
-        $this->page_size = isset($options['timeout']) ? (int)$options['timeout'] : 60;
         $this->chromeScale = isset($options['chrome_scale']) ? (float)$options['chrome_scale'] : null;
         $this->headers = isset($options['headers']) ? (array)$options['headers'] : [];
         $this->cookies = isset($options['cookies']) ? (string)$options['cookies'] : null;
         $this->tryDirectPdfFirst = isset($options['try_direct_pdf']) ? (bool)$options['try_direct_pdf'] : true;
-        $this->cacheDir = isset($options['cache_dir']) ? (string)$options['cache_dir'] : null;
-        $this->cacheTtl = isset($options['cache_ttl']) ? (int)$options['cache_ttl'] : 86400;
 
         // headers padrão (mantém Accept preferindo PDF)
         $this->headers = array_replace([
@@ -106,59 +103,6 @@ class UrlToPdf
 
         $out['err'] = 'Não é PDF nativo (Content-Type: ' . ($http['content_type'] ?: 'desconhecido') . ')';
         return $out;
-    }
-
-    public function getPdf($url, $isBase64)
-    {
-        $url = trim((string)$url);
-        if ($url === '') return UrlToPdfResult::fail('URL vazia.');
-
-        // cache
-        if ($this->cacheDir) {
-            $cached = $this->getFromCache($url);
-            if ($cached !== null) return UrlToPdfResult::ok($cached, ['source' => 'cache']);
-        }
-
-        // 1) PDF nativo (rápido quando existir)
-        if ($this->tryDirectPdfFirst) {
-            $direct = $this->tryDirectPdf($url);
-            if ($direct['ok']) {
-                $this->putIntoCache($url, $direct['body']);
-                return UrlToPdfResult::ok($direct['body'], [
-                    'source' => 'direct',
-                    'content_type' => $direct['content_type'],
-                    'http_status' => $direct['status'],
-                ]);
-            }
-        }
-
-        // 2) Chrome headless
-        $chr = $this->renderWithChrome($url);
-        if ($chr['ok']) {
-            $this->putIntoCache($url, $chr['body']);
-            return UrlToPdfResult::ok($chr['body'], ['source' => 'chrome']);
-        }
-
-        // erro consolidado
-        $msg = $direct['err'] ?? '';
-        if (!empty($chr['err'])) $msg .= ($msg ? ' | ' : '') . $chr['err'];
-        return UrlToPdfResult::fail($msg ?: 'Falha ao gerar PDF.');
-    }
-
-    public function savePdf($url, $destPath)
-    {
-        $r = $this->getPdf($url);
-        if (!$r->success) return $r;
-
-        $dir = dirname($destPath);
-        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
-            return UrlToPdfResult::fail('Não foi possível criar diretório: ' . $dir);
-        }
-        if (@file_put_contents($destPath, $r->pdf) === false) {
-            return UrlToPdfResult::fail('Falha ao salvar PDF em: ' . $destPath);
-        }
-        $r->meta['saved_to'] = $destPath;
-        return $r;
     }
 
     protected function renderWithChrome(string $url): array
@@ -405,5 +349,10 @@ class UrlToPdf
     {
         $self = new self($options);
         return $self->convert($url, $returnBase64);
+    }
+
+    public static function mergeUrls(array $urls, $returnBase64 = true, array $options = []): UrlToPdfResult
+    {
+        return PdfMerge::fromUrls($urls, $returnBase64, $options);
     }
 }

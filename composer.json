@@ -5,12 +5,13 @@
     "license": "MIT",
     "autoload": {
         "psr-4": {
-            "R2soft\\Toolkit\\": "src/"
+            "R2Soft\\Toolkit\\": "src/"
         }
     },
     "require": {
         "php": ">=8.0",
-        "ext-curl": "*"
+        "ext-curl": "*",
+        "r2soft/utils": "^1.0"
     },
     "config": {
         "preferred-install": "dist",

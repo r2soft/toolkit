@@ -14,33 +14,16 @@
  *  Não usa exceptions. Sempre retorna um objeto Resultado.
  */
 
-namespace App\Helpers;
+namespace R2Soft\Toolkit;
 
 /**
  * Estrutura de retorno dos métodos públicos.
  */
-class UrlToPdfResult
-{
-    public $success = false;
-    public $pdf = null;     // string binária do PDF
-    public $error = '';     // mensagem de erro
-    public $meta = [];     // infos adicionais (ex.: 'source' => 'chrome')
-
-    public static function ok($pdf, array $meta = [])
-    {
-        $r = new self;
-        $r->success = true;
-        $r->pdf = $pdf;
-        $r->meta = $meta;
-        return $r;
-    }
-
-    public static function fail($msg, array $meta = [])
-    {
-        $r = new self;
-        $r->success = false;
-        $r->error = $msg;
-        $r->meta = $meta;
-        return $r;
-    }
+class UrlToPdfResult {
+    public bool $success = false;
+    public ?string $pdf = null;   // binário
+    public string $error = '';
+    public array $meta = [];
+    public static function ok(string $pdf, array $meta = []): self { $r=new self; $r->success=true;$r->pdf=$pdf;$r->meta=$meta; return $r; }
+    public static function fail(string $msg, array $meta = []): self { $r=new self; $r->error=$msg; $r->meta=$meta; return $r; }
 }

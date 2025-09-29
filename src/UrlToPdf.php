@@ -3,38 +3,33 @@
  * @author usuario11
  * @date 26/09/2025 15:05
  *
- *  MIT License
- *  (c) 2025 R2 Soft
- *
- *  Classe pura PHP para gerar PDF a partir de uma URL:
- *  1) Tenta baixar PDF nativo (Accept: application/pdf)
- *  2) Tenta renderizar com wkhtmltopdf
- *  3) Tenta renderizar com Chrome/Chromium headless
- *
- *  Não usa exceptions. Sempre retorna um objeto Resultado.
+ * MIT License (c) 2025 R2 Soft
+ * Gera PDF de uma URL:
+ * 1) tenta PDF nativo (Content-Type)
+ * 2) cai para Chrome headless
+ * Sem exceptions; retorna UrlToPdfResult. Sem cache.
  */
 
-namespace App\Helpers;
+namespace R2Soft\Toolkit;
 
 class UrlToPdf
 {
     /** @var string|null nome/caminho do Chrome preferido (opcional) */
-    protected $chrome;
+    protected ?string $chrome;
     /** @var int timeout (s) */
-    protected $timeout;
+    protected int $timeout;
     /** @var float|null fator de escala do Chrome (ex.: 1.25) */
-    protected $chromeScale;
+    protected ?float $chromeScale;
     /** @var array headers HTTP p/ tentativa de PDF nativo */
-    protected $headers;
+    protected array $headers;
     /** @var string|null cookies no request */
-    protected $cookies;
+    protected ?string $cookies;
     /** @var bool tentar PDF nativo antes do Chrome */
-    protected $tryDirectPdfFirst;
-    /** @var string|null diretório de cache */
-    protected $cacheDir;
-    /** @var int TTL cache (s) */
-    protected $cacheTtl;
+    protected bool $tryDirectPdfFirst;
 
+    /**
+     * @param array $options array|null array de opções
+     */
     public function __construct(array $options = [])
     {
         $this->chrome = isset($options['chrome']) ? (string)$options['chrome'] : null;
@@ -54,7 +49,66 @@ class UrlToPdf
         ], $this->headers);
     }
 
-    public function getPdf($url)
+    /**
+     * API “direta”: retorna UrlToPdfResult. Se $returnBase64=true, devolve PDF em base64.
+     */
+    public function convert(?string $url, bool $returnBase64 = true): UrlToPdfResult
+    {
+        $url = trim((string)$url);
+        if ($url === '') return UrlToPdfResult::fail('URL vazia.');
+
+        // 1) PDF nativo
+        if ($this->tryDirectPdfFirst) {
+            $direct = $this->tryDirectPdf($url);
+            if ($direct['ok']) {
+                $pdf = $direct['body'];
+                if ($returnBase64) $pdf = base64_encode($pdf);
+                return UrlToPdfResult::ok($pdf, [
+                    'source' => 'direct',
+                    'content_type' => $direct['content_type'],
+                    'http_status' => $direct['status'],
+                ]);
+            }
+        }
+
+        // 2) Chrome headless
+        $chr = $this->renderWithChrome($url);
+        if ($chr['ok']) {
+            $pdf = $chr['body'];
+            if ($returnBase64) $pdf = base64_encode($pdf);
+            return UrlToPdfResult::ok($pdf, ['source' => 'chrome']);
+        }
+
+        $msg = $direct['err'] ?? '';
+        if (!empty($chr['err'])) $msg .= ($msg ? ' | ' : '') . $chr['err'];
+        return UrlToPdfResult::fail($msg ?: 'Falha ao gerar PDF.');
+    }
+
+    // ======== Internos ========
+    protected function tryDirectPdf(string $url): array
+    {
+        $out = ['ok' => false, 'body' => null, 'status' => null, 'content_type' => null, 'err' => null];
+        $http = $this->httpGet($url, $this->timeout, $this->headers, $this->cookies);
+        if (!$http['ok']) {
+            $out['err'] = $http['err'];
+            return $out;
+        }
+
+        $body = $http['body'];
+        $isPdf = (stripos((string)$http['content_type'], 'application/pdf') !== false) || (strpos($body, '%PDF') === 0);
+        if ($isPdf) {
+            $out['ok'] = true;
+            $out['body'] = $body;
+            $out['status'] = $http['status'];
+            $out['content_type'] = $http['content_type'];
+            return $out;
+        }
+
+        $out['err'] = 'Não é PDF nativo (Content-Type: ' . ($http['content_type'] ?: 'desconhecido') . ')';
+        return $out;
+    }
+
+    public function getPdf($url, $isBase64)
     {
         $url = trim((string)$url);
         if ($url === '') return UrlToPdfResult::fail('URL vazia.');
@@ -107,32 +161,7 @@ class UrlToPdf
         return $r;
     }
 
-    // ========= Internos =========
-
-    protected function tryDirectPdf($url)
-    {
-        $out = ['ok' => false, 'body' => null, 'status' => null, 'content_type' => null, 'err' => null];
-        $http = $this->httpGet($url, $this->timeout, $this->headers, $this->cookies);
-        if (!$http['ok']) {
-            $out['err'] = $http['err'];
-            return $out;
-        }
-
-        $out['status'] = $http['status'];
-        $out['content_type'] = $http['content_type'];
-        $body = $http['body'];
-        $isPdf = (stripos((string)$http['content_type'], 'application/pdf') !== false) || (strpos($body, '%PDF') === 0);
-        if ($isPdf) {
-            $out['ok'] = true;
-            $out['body'] = $body;
-            return $out;
-        }
-
-        $out['err'] = 'Não é PDF nativo (Content-Type: ' . ($http['content_type'] ?: 'desconhecido') . ')';
-        return $out;
-    }
-
-    protected function renderWithChrome($url)
+    protected function renderWithChrome(string $url): array
     {
         $out = ['ok' => false, 'body' => null, 'err' => null];
 
@@ -142,8 +171,6 @@ class UrlToPdf
             return $out;
         }
 
-        // sanear URL (único target)
-        $url = trim((string)$url);
         if ($url === '' || preg_match('/\s/', $url)) {
             $out['err'] = 'URL inválida para impressão.';
             return $out;
@@ -169,7 +196,6 @@ class UrlToPdf
 
         $tmpPdf = $this->tempFile('.pdf');
 
-        // flags em DOIS TOKENS (evita "Multiple targets")
         $cmd = [
             $chromeBin,
             '--headless=new',
@@ -194,7 +220,6 @@ class UrlToPdf
 
         $rp = $this->runProcess($cmd, $this->timeout, $env);
 
-        // sucesso se arquivo existe (mesmo com warnings/exit code != 0)
         if (is_file($tmpPdf) && filesize($tmpPdf) > 1000) {
             $bin = (string)@file_get_contents($tmpPdf);
             @unlink($tmpPdf);
@@ -211,7 +236,7 @@ class UrlToPdf
 
     // ======= Utilitários =======
 
-    protected function httpGet($url, $timeout, $headers = [], $cookies = null)
+    protected function httpGet(string $url, int $timeout, array $headers = [], ?string $cookies = null): array
     {
         $out = ['ok' => false, 'status' => null, 'content_type' => null, 'body' => null, 'err' => null];
 
@@ -221,8 +246,8 @@ class UrlToPdf
         }
 
         $h = [];
-        foreach ($headers as $k => $v) $h[] = $k . ': ' . $v;
-        if ($cookies) $h[] = 'Cookie: ' . $cookies;
+        foreach ($headers as $k => $v) $h[] = "$k: $v";
+        if ($cookies) $h[] = "Cookie: $cookies";
 
         $ch = curl_init();
         curl_setopt_array($ch, [
@@ -273,75 +298,54 @@ class UrlToPdf
     }
 
     /** localiza binário de Chrome automaticamente */
-    protected function resolveChromeBinary()
+    protected function resolveChromeBinary(): ?string
     {
-        $candidates = [];
-        if (!empty($this->chrome)) $candidates[] = $this->chrome;
+        $c = [];
+        if (!empty($this->chrome)) $c[] = $this->chrome;
         $env = getenv('CHROME_BIN');
-        if ($env) $candidates[] = $env;
-        $candidates = array_merge($candidates, [
-            '/usr/bin/google-chrome',
-            '/usr/bin/google-chrome-stable',
-            '/usr/bin/chromium',
-            '/usr/bin/chromium-browser',
-            'google-chrome',
-            'google-chrome-stable',
-            'chromium',
-            'chromium-browser',
+        if ($env) $c[] = $env;
+        $c = array_merge($c, [
+            '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
+            '/usr/bin/chromium', '/usr/bin/chromium-browser',
+            'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser',
         ]);
-
-        foreach ($candidates as $bin) {
-            // caminho completo?
+        foreach ($c as $bin) {
             if (strpos($bin, '/') !== false || strpos($bin, '\\') !== false) {
                 if (@is_file($bin) && @is_executable($bin)) {
-                    $probe = $this->runProcess([$bin, '--version'], 6);
-                    if (stripos((string)$probe['stdout'], 'Chrome') !== false ||
-                        stripos((string)$probe['stdout'], 'Chromium') !== false) {
-                        return $bin;
-                    }
+                    $p = $this->runProcess([$bin, '--version'], 6);
+                    if (stripos($p['stdout'] ?? '', 'Chrome') !== false || stripos($p['stdout'] ?? '', 'Chromium') !== false) return $bin;
                 }
                 continue;
             }
-            // nome no PATH
             $resolved = $this->resolveFromPath($bin);
             if ($resolved) {
-                $probe = $this->runProcess([$resolved, '--version'], 6);
-                if (stripos((string)$probe['stdout'], 'Chrome') !== false ||
-                    stripos((string)$probe['stdout'], 'Chromium') !== false) {
-                    return $resolved;
-                }
+                $p = $this->runProcess([$resolved, '--version'], 6);
+                if (stripos($p['stdout'] ?? '', 'Chrome') !== false || stripos($p['stdout'] ?? '', 'Chromium') !== false) return $resolved;
             }
         }
         return null;
     }
 
-    protected function resolveFromPath($name)
+    protected function resolveFromPath(string $name): ?string
     {
         $cmd = (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') ? ['where', $name] : ['bash', '-lc', 'command -v ' . escapeshellarg($name)];
         $rp = $this->runProcess($cmd, 4);
-        if ($rp['ok'] && !empty($rp['stdout'])) {
+        if (($rp['ok'] ?? false) && !empty($rp['stdout'])) {
             $path = trim($rp['stdout']);
             if (@is_file($path) && @is_executable($path)) return $path;
         }
         return null;
     }
 
-    protected function runProcess($cmd, $timeout, array $env = [])
+    protected function runProcess(array $cmd, int $timeout, array $env = []): array
     {
-        // monta comando com flags separadas (sem juntar --flag=value)
+        // monta comando, flags com dois tokens
         $final = '';
         foreach ($cmd as $i => $part) {
-            if ($i === 0) {
-                $final .= escapeshellcmd($part);
-            } else {
-                // parte começa com '--'? passa literal; valores/caminhos escapados
-                if (substr($part, 0, 2) === '--') $final .= ' ' . $part;
-                else $final .= ' ' . escapeshellarg($part);
-            }
+            if ($i === 0) $final .= escapeshellcmd($part);
+            else $final .= (str_starts_with($part, '--')) ? ' ' . $part : ' ' . escapeshellarg($part);
         }
-
         $procEnv = array_merge($_ENV, $_SERVER, $env);
-
         $des = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
         $p = @proc_open($final, $des, $pipes, null, $procEnv);
         if (!is_resource($p)) return ['ok' => false, 'stdout' => '', 'stderr' => 'proc_open falhou', 'code' => -1];
@@ -349,23 +353,20 @@ class UrlToPdf
         fclose($pipes[0]);
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
-
         $start = microtime(true);
-        $stdout = $stderr = '';
-
+        $stdout = '';
+        $stderr = '';
         while (true) {
             $status = proc_get_status($p);
             if (!$status['running']) break;
 
             $read = [$pipes[1], $pipes[2]];
             $write = $except = null;
-            @stream_select($read, $write, $except, 0, 200000); // 200ms
-
+            @stream_select($read, $write, $except, 0, 200000);
             foreach ($read as $r) {
                 $buf = @fread($r, 8192);
                 if ($buf !== false && $buf !== '') {
-                    if ($r === $pipes[1]) $stdout .= $buf;
-                    else $stderr .= $buf;
+                    if ($r === $pipes[1]) $stdout .= $buf; else $stderr .= $buf;
                 }
             }
 
@@ -386,7 +387,7 @@ class UrlToPdf
         return ['ok' => ($code === 0), 'stdout' => $stdout, 'stderr' => $stderr, 'code' => $code];
     }
 
-    protected function tempFile($suffix = '')
+    protected function tempFile(string $suffix = ''): string
     {
         $f = @tempnam(sys_get_temp_dir(), 'r2pdf_');
         if ($suffix !== '' && $f) {
@@ -397,33 +398,9 @@ class UrlToPdf
         return $f;
     }
 
-    // cache simples em disco
-    protected function cacheKey($url)
+    public static function make(?string $url, bool $returnBase64 = false, array $options = []): UrlToPdfResult
     {
-        return sha1($url);
-    }
-
-    protected function cachePath($url)
-    {
-        return rtrim((string)$this->cacheDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $this->cacheKey($url) . '.pdf';
-    }
-
-    protected function getFromCache($url)
-    {
-        if (!$this->cacheDir) return null;
-        $p = $this->cachePath($url);
-        if (!@is_file($p)) return null;
-        if ((time() - (int)@filemtime($p)) > $this->cacheTtl) return null;
-        $bin = @file_get_contents($p);
-        return ($bin !== false && $bin !== '') ? $bin : null;
-    }
-
-    protected function putIntoCache($url, $pdf)
-    {
-        if (!$this->cacheDir) return;
-        $p = $this->cachePath($url);
-        $d = dirname($p);
-        if (!is_dir($d)) @mkdir($d, 0775, true);
-        @file_put_contents($p, $pdf);
+        $self = new self($options);
+        return $self->convert($url, $returnBase64);
     }
 }

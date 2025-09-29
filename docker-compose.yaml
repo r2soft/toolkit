@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: r2soft-toolkit
+        working_dir: /app
+        volumes:
+            - ./:/app
+        environment:
+            CHROME_BIN: /usr/bin/google-chrome
+            # Evita problemas de timezone em testes
+            TZ: America/Sao_Paulo
+        # Você pode trocar o comando por 'tail -f' para manter o container vivo
+        command: bash -lc "composer install --no-interaction && tail -f /dev/null"
